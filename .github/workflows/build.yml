@@ -1,0 +1,53 @@
+name: Build Warden Browser
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt6 and Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libssl-dev \
+            qt6-base-dev qt6-webengine-dev libqt6sql6-sqlite
+      - name: Configure and Build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      - name: Package (.deb)
+        run: |
+          cd build && cpack -G DEB
+      - name: Upload Linux Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: WardenBrowser-Linux-deb
+          path: build/*.deb
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          modules: 'qtwebengine qtwebsockets'
+      - name: Install NSIS
+        run: choco install nsis -y
+      - name: Configure and Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --parallel
+      - name: Package (.exe)
+        run: |
+          cd build && cpack -G NSIS -C Release
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: WardenBrowser-Windows-exe
+          path: build/*.exe
