@@ -1,11 +1,11 @@
 # warden-browser
 Privacy-first C++ desktop browser with zero-knowledge encrypted accounts, tracker &amp; ad interception, live wallpapers, and auto-switching AI assistant.
 
-# 🛡️ Warden Browser
-
-**Warden Browser** is a fast, privacy-hardened, cross-platform desktop web browser built with modern **C++20** and **Qt6 WebEngine**. Designed with a focus on maximum privacy, traffic protection, and clean everyday usability.
-
----
+<div align="center">
+  <img src="resources/warden.png" alt="Warden Browser Logo" width="128" height="128">
+  <h1>Warden Browser</h1>
+  <p><strong>A fast, privacy-hardened, cross-platform desktop web browser built with modern C++20 and Qt6 WebEngine.</strong></p>
+</div>
 
 ### ✨ Key Features
 
