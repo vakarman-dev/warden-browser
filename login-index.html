@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark" data-theme-pref="system">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Warden ID — вход в аккаунт Warden Browser.">
+<title>Warden ID — вход</title>
+
+<script>
+/* Ранняя установка темы (до отрисовки) + откат логотипа */
+(function () {
+  var root = document.documentElement, pref = 'system';
+  root.classList.add('js');
+  try { pref = localStorage.getItem('warden-theme') || 'system'; } catch (e) {}
+  if (['system', 'dark', 'light'].indexOf(pref) < 0) pref = 'system';
+  var dark = pref === 'system'
+    ? !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    : pref === 'dark';
+  root.setAttribute('data-theme', dark ? 'dark' : 'light');
+  root.setAttribute('data-theme-pref', pref);
+})();
+
+window.wardenLogoFallback = function (img) {
+  var list = (img.getAttribute('data-fallbacks') || '').split('|').filter(Boolean);
+  if (list.length) {
+    img.setAttribute('data-fallbacks', list.slice(1).join('|'));
+    img.src = list[0];
+  } else {
+    img.onerror = null;
+    img.hidden = true;
+    var svg = img.nextElementSibling;
+    if (svg) svg.removeAttribute('hidden');
+  }
+};
+</script>
+
+<style>
+/* ===================== ПЕРЕМЕННЫЕ ТЕМ (идентичны главному сайту) ===================== */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --bg-2: #10161f;
+  --text: #e6edf3;
+  --text-muted: #9198a1;
+  --border: #2a2f37;
+  --card-bg: rgba(22, 27, 34, 0.62);
+  --card-bg-hover: rgba(28, 34, 43, 0.78);
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --nav-bg: rgba(13, 17, 23, 0.72);
+  --menu-bg: rgba(22, 27, 34, 0.96);
+  --accent: #4a90e2;
+  --accent-2: #00d2ff;
+  --accent-text: #58b4ff;
+  --on-accent: #06121f;
+  --accent-soft: rgba(74, 144, 226, 0.14);
+  --accent-border: rgba(0, 210, 255, 0.32);
+  --btn-bg: rgba(255, 255, 255, 0.04);
+  --btn-bg-hover: rgba(255, 255, 255, 0.09);
+  --glow-1: rgba(74, 144, 226, 0.22);
+  --glow-2: rgba(0, 210, 255, 0.14);
+  --danger: #f85149;
+  --danger-soft: rgba(248, 81, 73, 0.12);
+  --danger-border: rgba(248, 81, 73, 0.4);
+  --input-bg: rgba(255, 255, 255, 0.03);
+  --input-bg-focus: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fa;
+  --bg-2: #ffffff;
+  --text: #1f2328;
+  --text-muted: #59636e;
+  --border: #d0d7de;
+  --card-bg: rgba(255, 255, 255, 0.74);
+  --card-bg-hover: rgba(255, 255, 255, 0.94);
+  --card-shadow: 0 1px 2px rgba(31, 35, 40, 0.05), 0 8px 24px rgba(66, 74, 83, 0.09);
+  --nav-bg: rgba(246, 248, 250, 0.78);
+  --menu-bg: rgba(255, 255, 255, 0.98);
+  --accent: #0969da;
+  --accent-2: #0a8fb8;
+  --accent-text: #0969da;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(9, 105, 218, 0.09);
+  --accent-border: rgba(9, 105, 218, 0.32);
+  --btn-bg: rgba(255, 255, 255, 0.8);
+  --btn-bg-hover: #ffffff;
+  --glow-1: rgba(9, 105, 218, 0.13);
+  --glow-2: rgba(10, 143, 184, 0.11);
+  --danger: #d1242f;
+  --danger-soft: rgba(209, 36, 47, 0.09);
+  --danger-border: rgba(209, 36, 47, 0.35);
+  --input-bg: rgba(31, 35, 40, 0.03);
+  --input-bg-focus: rgba(31, 35, 40, 0.05);
+}
+
+/* ===================== БАЗА ===================== */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .35s ease, color .35s ease;
+  overflow-x: hidden;
+}
+
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 8px; }
+
+.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.icon { width: 18px; height: 18px; flex: none; }
+
+/* ===================== NAVBAR ===================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  border-bottom: 1px solid var(--border);
+  transition: background-color .35s ease, border-color .35s ease;
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 1.06rem; letter-spacing: -0.01em; min-width: 0; }
+.brand:hover { text-decoration: none; }
+.brand-logo { width: 34px; height: 34px; flex: none; object-fit: contain; border-radius: 8px; filter: drop-shadow(0 2px 8px var(--glow-1)); }
+.brand-name { white-space: nowrap; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: .7rem; font-weight: 600; letter-spacing: .02em; white-space: nowrap;
+  color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-border);
+}
+
+.nav-actions { display: flex; align-items: center; gap: 8px; }
+
+.nav-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 38px; padding: 0 12px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--btn-bg); color: var(--text);
+  font-size: .88rem; font-weight: 500; white-space: nowrap;
+  transition: background-color .2s ease, border-color .2s ease, transform .2s ease;
+}
+.nav-btn:hover { background: var(--btn-bg-hover); border-color: var(--accent-border); text-decoration: none; }
+.nav-btn:active { transform: scale(.97); }
+.nav-btn .chev { width: 14px; height: 14px; opacity: .7; transition: transform .25s ease; }
+.nav-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+.flag { width: 22px; height: 15px; flex: none; border-radius: 3px; box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.35); overflow: hidden; display: block; }
+
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 190px;
+  padding: 6px; border-radius: 12px;
+  background: var(--menu-bg); border: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  opacity: 0; visibility: hidden; transform: translateY(-6px) scale(.98); transform-origin: top right;
+  transition: opacity .18s ease, transform .18s ease, visibility .18s;
+}
+.menu.open { opacity: 1; visibility: visible; transform: none; }
+.menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 8px; background: transparent;
+  font-size: .9rem; text-align: left; color: var(--text);
+  transition: background-color .15s ease;
+}
+.menu-item:hover { background: var(--accent-soft); }
+.menu-item .check { margin-left: auto; width: 16px; height: 16px; color: var(--accent-text); opacity: 0; }
+.menu-item[aria-checked="true"] { color: var(--accent-text); font-weight: 600; }
+.menu-item[aria-checked="true"] .check { opacity: 1; }
+.menu-item small { color: var(--text-muted); font-weight: 500; }
+
+/* ===================== СТРАНИЦА ВХОДА ===================== */
+.page {
+  position: relative; isolation: isolate;
+  min-height: 100vh; min-height: 100svh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 110px 20px 60px;
+  overflow: hidden;
+}
+.page::before, .page::after {
+  content: ""; position: absolute; z-index: -2; border-radius: 50%; filter: blur(70px); pointer-events: none;
+}
+.page::before { width: 620px; height: 620px; left: -180px; top: -160px; background: radial-gradient(circle, var(--glow-1), transparent 65%); }
+.page::after { width: 560px; height: 560px; right: -160px; bottom: -180px; background: radial-gradient(circle, var(--glow-2), transparent 65%); }
+
+.auth-card {
+  position: relative; width: 100%; max-width: 440px;
+  padding: 36px 32px; border-radius: 22px;
+  background: var(--card-bg); border: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: var(--card-shadow);
+}
+
+.auth-head { text-align: center; margin-bottom: 26px; }
+.auth-logo { width: 64px; height: 64px; margin: 0 auto 14px; display: block; object-fit: contain; filter: drop-shadow(0 8px 26px var(--glow-1)); animation: float 5s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-6px); } }
+.auth-head h1 { margin: 0 0 6px; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+.auth-head p { margin: 0; color: var(--text-muted); font-size: .92rem; }
+
+/* OAuth кнопки */
+.oauth-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+.oauth-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 48px; padding: 0 16px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--btn-bg);
+  font-size: .95rem; font-weight: 600; color: var(--text);
+  transition: background-color .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.oauth-btn:hover { background: var(--btn-bg-hover); border-color: var(--accent-border); text-decoration: none; }
+.oauth-btn:active { transform: scale(.98); }
+.oauth-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.oauth-btn .brand-icon { width: 22px; height: 22px; flex: none; }
+.oauth-btn .spinner { margin-left: auto; }
+
+.spinner {
+  width: 18px; height: 18px; flex: none; border-radius: 50%;
+  border: 2px solid var(--accent-border); border-top-color: var(--accent-text);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Разделитель */
+.divider { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; color: var(--text-muted); font-size: .82rem; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+/* Вкладки */
+.tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  padding: 4px; margin-bottom: 20px; border-radius: 12px;
+  background: var(--btn-bg); border: 1px solid var(--border);
+}
+.tab {
+  padding: 9px 8px; border: 0; border-radius: 9px; background: transparent;
+  font-size: .9rem; font-weight: 600; color: var(--text-muted);
+  transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.tab[aria-selected="true"] {
+  color: var(--text); background: var(--card-bg-hover);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Форма */
+.form { display: flex; flex-direction: column; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: .82rem; font-weight: 600; color: var(--text-muted); }
+.input {
+  width: 100%; min-height: 46px; padding: 0 14px; border-radius: 11px;
+  border: 1px solid var(--border); background: var(--input-bg);
+  color: var(--text); font: inherit; font-size: .95rem;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+.input::placeholder { color: var(--text-muted); opacity: .7; }
+.input:focus { outline: none; border-color: var(--accent-border); background: var(--input-bg-focus); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 22px; border-radius: 12px;
+  border: 1px solid transparent; font-size: .98rem; font-weight: 600;
+  transition: transform .2s ease, box-shadow .25s ease, background-color .2s ease, border-color .2s ease;
+}
+.btn:hover { text-decoration: none; transform: translateY(-1px); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.btn-primary {
+  color: var(--on-accent);
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 26px var(--glow-1), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btn-primary:hover { box-shadow: 0 14px 36px var(--glow-1), 0 0 0 4px var(--accent-soft), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.btn-ghost {
+  color: var(--text); background: var(--btn-bg); border-color: var(--border);
+}
+.btn-ghost:hover { border-color: var(--accent-border); background: var(--btn-bg-hover); }
+.btn-block { width: 100%; }
+
+/* Сообщения */
+.alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border-radius: 11px; font-size: .88rem; line-height: 1.45;
+  border: 1px solid transparent;
+}
+.alert-error { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
+.alert-info { color: var(--accent-text); background: var(--accent-soft); border-color: var(--accent-border); }
+.alert svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+
+/* Профиль */
+.profile { text-align: center; }
+.avatar {
+  width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 2rem; font-weight: 800; color: var(--on-accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 10px 30px var(--glow-1);
+  overflow: hidden;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile h2 { margin: 0 0 4px; font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
+.profile .email { margin: 0 0 24px; color: var(--text-muted); font-size: .94rem; word-break: break-all; }
+.profile .meta { margin: 0 0 24px; color: var(--text-muted); font-size: .84rem; }
+
+/* Низ */
+.auth-foot { margin-top: 22px; text-align: center; }
+.auth-foot a { display: inline-flex; align-items: center; gap: 7px; font-size: .9rem; font-weight: 600; }
+
+/* ===================== АДАПТИВ ===================== */
+@media (max-width: 760px) {
+  .brand .badge, .nav-btn .label { display: none; }
+  .nav-btn { padding: 0 10px; }
+}
+@media (max-width: 480px) {
+  .container { padding: 0 18px; }
+  .auth-card { padding: 28px 20px; }
+}
+@media (max-width: 400px) {
+  .brand-name { font-size: .95rem; }
+  .nav-actions { gap: 6px; }
+  .nav-btn { padding: 0 8px; gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ===================== SVG-СПРАЙТ ===================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="wardenGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4a90e2"/>
+      <stop offset="1" stop-color="#00d2ff"/>
+    </linearGradient>
+
+    <symbol id="logo-shield" viewBox="0 0 64 64">
+      <path d="M32 3 56 12v18c0 15.5-9.8 26.4-24 31C17.800 56.400 8 45.500 8 30V12Z" fill="url(#wardenGrad)"/>
+      <path d="M32 3 56 12v18c0 15.500-9.800 26.400-24 31Z" fill="#ffffff" opacity=".12"/>
+      <path d="M19 22l6.500 21L32 29l6.500 14L45 22" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-system" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>
+    </symbol>
+    <symbol id="i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.500 14.500A8.500 8.500 0 1 1 9.500 3.500a7 7 0 0 0 11 11Z"/>
+    </symbol>
+    <symbol id="i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.900 4.900l1.400 1.400M17.700 17.700l1.400 1.400M2 12h2M20 12h2M4.900 19.100l1.400-1.400M17.700 6.300l1.400-1.400"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m6 9 6 6 6-6"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.600" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12.500 4.500 4.500L19 7.500"/>
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7.500v5.500M12 16.500h.010"/>
+    </symbol>
+
+    <!-- Флаги -->
+    <symbol id="flag-ru" viewBox="0 0 60 40">
+      <rect width="60" height="40" fill="#ffffff"/>
+      <rect y="13.330" width="60" height="13.340" fill="#0039a6"/>
+      <rect y="26.670" width="60" height="13.330" fill="#d52b1e"/>
+    </symbol>
+    <symbol id="flag-en" viewBox="0 0 60 40">
+      <rect width="60" height="40" fill="#012169"/>
+      <path d="M0 0 60 40M60 0 0 40" stroke="#ffffff" stroke-width="8"/>
+      <path d="M0 0 60 40M60 0 0 40" stroke="#c8102e" stroke-width="3"/>
+      <path d="M30 0v40M0 20h60" stroke="#ffffff" stroke-width="13"/>
+      <path d="M30 0v40M0 20h60" stroke="#c8102e" stroke-width="7"/>
+    </symbol>
+
+    <!-- Соцсети -->
+    <symbol id="i-google" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M23.490 12.270c0-.850-.080-1.670-.220-2.450H12v4.640h6.450c-.280 1.500-1.130 2.770-2.400 3.620v3.010h3.890c2.280-2.100 3.550-5.180 3.550-8.820Z"/>
+      <path fill="#34A853" d="M12 24c3.240 0 5.960-1.070 7.940-2.910l-3.890-3.010c-1.080.720-2.460 1.150-4.050 1.150-3.110 0-5.750-2.100-6.690-4.930H1.290v3.110C3.260 21.310 7.310 24 12 24Z"/>
+      <path fill="#FBBC05" d="M5.310 14.300A7.200 7.200 0 0 1 4.930 12c0-.800.140-1.570.380-2.300V6.590H1.290A12.000 12.000 0 0 0 0 12c0 1.940.470 3.770 1.290 5.410Z"/>
+      <path fill="#EA4335" d="M12 4.770c1.760 0 3.340.610 4.590 1.790l3.440-3.440C17.950 1.190 15.230 0 12 0 7.310 0 3.260 2.690 1.290 6.590l3.640 2.820C5.870 6.870 8.510 4.770 12 4.770Z"/>
+    </symbol>
+    <symbol id="i-yandex" viewBox="0 0 24 24">
+      <path fill="#FC3F1D" d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12Z"/>
+      <path fill="#fff" d="M12 4.100 6.700 18.000h2.500l1.300-3.400h3.000l1.300 3.400h2.500L12 4.100Zm0 3.200 1.400 3.800h-2.800L12 7.300Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ===================== NAVBAR ===================== -->
+<header class="navbar">
+  <div class="container nav-inner">
+    <a class="brand" href="https://github.io" data-i18n-aria="ariaHome">
+      <img class="brand-logo" alt=""
+           src="../resources/warden-browser-logo.png"
+           data-fallbacks="https://raw.githubusercontent.com/vakarman-dev/warden-browser/main/resources/warden-browser-logo.png|../resources/warden.png"
+           onerror="wardenLogoFallback(this)">
+      <svg class="brand-logo" hidden aria-hidden="true"><use href="#logo-shield"/></svg>
+      <span class="brand-name">Warden Browser</span>
+      <span class="badge">Open Source</span>
+    </a>
+
+    <nav class="nav-actions" data-i18n-aria="ariaNav">
+      <!-- Тема -->
+      <div class="menu-wrap">
+        <button class="nav-btn" id="themeBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="themeMenu" data-i18n-aria="ariaTheme">
+          <svg class="icon" aria-hidden="true"><use id="themeIcon" href="#i-system"/></svg>
+          <span class="label" id="themeLabel">Системная</span>
+          <svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        </button>
+        <div class="menu" id="themeMenu" role="menu">
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="true" data-theme-value="system">
+            <svg class="icon" aria-hidden="true"><use href="#i-system"/></svg>
+            <span data-i18n="themeSystem">Системная</span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-theme-value="dark">
+            <svg class="icon" aria-hidden="true"><use href="#i-dark"/></svg>
+            <span data-i18n="themeDark">Тёмная</span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-theme-value="light">
+            <svg class="icon" aria-hidden="true"><use href="#i-light"/></svg>
+            <span data-i18n="themeLight">Светлая</span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Язык -->
+      <div class="menu-wrap">
+        <button class="nav-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langMenu" data-i18n-aria="ariaLang">
+          <svg class="flag" aria-hidden="true"><use id="langFlag" href="#flag-ru"/></svg>
+          <span id="langCode">RU</span>
+          <svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        </button>
+        <div class="menu" id="langMenu" role="menu">
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="true" data-lang-value="ru" lang="ru">
+            <svg class="flag" aria-hidden="true"><use href="#flag-ru"/></svg>
+            <span>Русский <small>(RU)</small></span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-lang-value="en" lang="en">
+            <svg class="flag" aria-hidden="true"><use href="#flag-en"/></svg>
+            <span>English <small>(EN)</small></span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+        </div>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<!-- ===================== КАРТОЧКА АВТОРИЗАЦИИ ===================== -->
+<main class="page">
+  <div class="auth-card">
+
+    <div class="auth-head">
+      <img class="auth-logo" alt=""
+           src="../resources/warden-browser-logo.png"
+           data-fallbacks="https://raw.githubusercontent.com/vakarman-dev/warden-browser/main/resources/warden-browser-logo.png|../resources/warden.png"
+           onerror="wardenLogoFallback(this)">
+      <svg class="auth-logo" hidden aria-hidden="true"><use href="#logo-shield"/></svg>
+      <h1 data-i18n="title">Warden ID</h1>
+      <p data-i18n="subtitle">Войдите, чтобы синхронизировать настройки и закладки</p>
+    </div>
+
+    <!-- Состояние: загрузка -->
+    <div id="loadingState" hidden>
+      <div class="auth-head" style="margin-bottom:0">
+        <div class="spinner" style="width:28px;height:28px;margin:0 auto 14px"></div>
+        <p data-i18n="loading">Проверяем сессию…</p>
+      </div>
+    </div>
+
+    <!-- Состояние: не авторизован -->
+    <div id="authState" hidden>
+      <!-- OAuth -->
+      <div class="oauth-group">
+        <button class="oauth-btn" type="button" id="googleBtn">
+          <svg class="brand-icon" aria-hidden="true"><use href="#i-google"/></svg>
+          <span data-i18n="google">Продолжить через Google</span>
+          <span class="spinner" hidden></span>
+        </button>
+        <button class="oauth-btn" type="button" id="yandexBtn">
+          <svg class="brand-icon" aria-hidden="true"><use href="#i-yandex"/></svg>
+          <span data-i18n="yandex">Продолжить через Яндекс</span>
+          <span class="spinner" hidden></span>
+        </button>
+      </div>
+
+      <div class="divider" data-i18n="orEmail">или через Email</div>
+
+      <!-- Сообщение об ошибке -->
+      <div class="alert alert-error" id="authError" hidden>
+        <svg aria-hidden="true"><use href="#i-alert"/></svg>
+        <span id="authErrorText"></span>
+      </div>
+
+      <!-- Вкладки -->
+      <div class="tabs" role="tablist">
+        <button class="tab" type="button" role="tab" id="tabSignIn" aria-selected="true" aria-controls="panelSignIn" data-i18n="tabSignIn">Вход</button>
+        <button class="tab" type="button" role="tab" id="tabSignUp" aria-selected="false" aria-controls="panelSignUp" data-i18n="tabSignUp">Регистрация</button>
+      </div>
+
+      <!-- Вход -->
+      <form class="form" id="panelSignIn" role="tabpanel" novalidate>
+        <div class="field">
+          <label for="signinEmail" data-i18n="email">Email</label>
+          <input class="input" type="email" id="signinEmail" autocomplete="email" data-i18n-placeholder="emailPh" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="signinPass" data-i18n="password">Пароль</label>
+          <input class="input" type="password" id="signinPass" autocomplete="current-password" data-i18n-placeholder="passPh" placeholder="••••••••">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" id="signinSubmit" data-i18n="signIn">Войти</button>
+      </form>
+
+      <!-- Регистрация -->
+      <form class="form" id="panelSignUp" role="tabpanel" hidden novalidate>
+        <div class="field">
+          <label for="signupNick" data-i18n="nickname">Никнейм</label>
+          <input class="input" type="text" id="signupNick" autocomplete="nickname" data-i18n-placeholder="nickPh" placeholder="warden_user">
+        </div>
+        <div class="field">
+          <label for="signupEmail" data-i18n="email">Email</label>
+          <input class="input" type="email" id="signupEmail" autocomplete="email" data-i18n-placeholder="emailPh" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="signupPass" data-i18n="password">Пароль</label>
+          <input class="input" type="password" id="signupPass" autocomplete="new-password" data-i18n-placeholder="passPh" placeholder="••••••••">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" id="signupSubmit" data-i18n="signUp">Создать аккаунт</button>
+      </form>
+    </div>
+
+    <!-- Состояние: авторизован -->
+    <div class="profile" id="profileState" hidden>
+      <div class="avatar" id="profileAvatar"></div>
+      <h2 id="profileGreeting"></h2>
+      <p class="email" id="profileEmail"></p>
+      <p class="meta" data-i18n="profileMeta">Аккаунт Warden ID активен</p>
+      <button class="btn btn-ghost btn-block" type="button" id="signoutBtn" data-i18n="signOut">Выйти</button>
+    </div>
+
+    <div class="auth-foot">
+      <a href="https://github.io" data-i18n="backHome">← Вернуться на главную</a>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var root = document.documentElement;
+  var $ = function (sel, ctx) { return (ctx || document).querySelector(sel); };
+  var $$ = function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+
+  /* ======================================================
+     SUPABASE — подставьте свои значения
+     ====================================================== */
+  var SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+  var SUPABASE_KEY = 'YOUR-ANON-PUBLIC-KEY';
+
+  var supabaseClient = null;
+  if (window.supabase && window.supabase.createClient) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+
+  /* ======================================================
+     ПЕРЕВОДЫ
+     ====================================================== */
+  var I18N = {
+    ru: {
+      docTitle: 'Warden ID — вход',
+      ariaHome: 'Warden Browser — на главную',
+      ariaNav: 'Основная навигация',
+      ariaTheme: 'Тема оформления',
+      ariaLang: 'Язык сайта',
+      themeSystem: 'Системная',
+      themeDark: 'Тёмная',
+      themeLight: 'Светлая',
+      title: 'Warden ID',
+      subtitle: 'Войдите, чтобы синхронизировать настройки и закладки',
+      loading: 'Проверяем сессию…',
+      google: 'Продолжить через Google',
+      yandex: 'Продолжить через Яндекс',
+      orEmail: 'или через Email',
+      tabSignIn: 'Вход',
+      tabSignUp: 'Регистрация',
+      email: 'Email',
+      password: 'Пароль',
+      nickname: 'Никнейм',
+      emailPh: 'you@example.com',
+      passPh: '••••••••',
+      nickPh: 'warden_user',
+      signIn: 'Войти',
+      signUp: 'Создать аккаунт',
+      signOut: 'Выйти',
+      profileMeta: 'Аккаунт Warden ID активен',
+      backHome: '← Вернуться на главную',
+      errNoSupabase: 'Не удалось загрузить Supabase. Проверьте подключение к интернету.',
+      errFillAll: 'Заполните все поля.',
+      errInvalidEmail: 'Введите корректный Email.',
+      errShortPass: 'Пароль должен содержать минимум 6 символов.',
+      errGeneric: 'Что-то пошло не так. Попробуйте ещё раз.',
+      errYandex: 'Провайдер «Яндекс» ещё не активирован. Включите его в панели Supabase: Authentication → Providers → Yandex.',
+      errEmailTaken: 'Пользователь с таким Email уже существует.',
+      errInvalidCreds: 'Неверный Email или пароль.',
+      errEmailNotConfirmed: 'Подтвердите Email, перейдя по ссылке из письма.',
+      greeting: 'Привет,'
+    },
+    en: {
+      docTitle: 'Warden ID — sign in',
+      ariaHome: 'Warden Browser — home',
+      ariaNav: 'Main navigation',
+      ariaTheme: 'Color theme',
+      ariaLang: 'Site language',
+      themeSystem: 'System',
+      themeDark: 'Dark',
+      themeLight: 'Light',
+      title: 'Warden ID',
+      subtitle: 'Sign in to sync your settings and bookmarks',
+      loading: 'Checking session…',
+      google: 'Continue with Google',
+      yandex: 'Continue with Yandex',
+      orEmail: 'or via Email',
+      tabSignIn: 'Sign in',
+      tabSignUp: 'Sign up',
+      email: 'Email',
+      password: 'Password',
+      nickname: 'Nickname',
+      emailPh: 'you@example.com',
+      passPh: '••••••••',
+      nickPh: 'warden_user',
+      signIn: 'Sign in',
+      signUp: 'Create account',
+      signOut: 'Sign out',
+      profileMeta: 'Warden ID account active',
+      backHome: '← Back to home',
+      errNoSupabase: 'Failed to load Supabase. Check your internet connection.',
+      errFillAll: 'Please fill in all fields.',
+      errInvalidEmail: 'Enter a valid email address.',
+      errShortPass: 'Password must be at least 6 characters.',
+      errGeneric: 'Something went wrong. Please try again.',
+      errYandex: 'The Yandex provider is not enabled yet. Turn it on in the Supabase dashboard: Authentication → Providers → Yandex.',
+      errEmailTaken: 'A user with this email already exists.',
+      errInvalidCreds: 'Invalid email or password.',
+      errEmailNotConfirmed: 'Confirm your email using the link in the message.',
+      greeting: 'Hello,'
+    }
+  };
+
+  var LANG_KEY = 'warden-lang';
+  var currentLang = store.get(LANG_KEY);
+  if (!I18N[currentLang]) currentLang = 'ru';
+
+  function t(key) {
+    var dict = I18N[currentLang] || I18N.ru;
+    return dict[key] != null ? dict[key] : (I18N.ru[key] != null ? I18N.ru[key] : key);
+  }
+
+  function applyLang(lang, save) {
+    if (!I18N[lang]) lang = 'ru';
+    currentLang = lang;
+    root.lang = lang;
+    document.title = t('docTitle');
+
+    $$('[data-i18n]').forEach(function (el) { el.textContent = t(el.getAttribute('data-i18n')); });
+    $$('[data-i18n-placeholder]').forEach(function (el) { el.placeholder = t(el.getAttribute('data-i18n-placeholder')); });
+
+    $('#langFlag').setAttribute('href', '#flag-' + lang);
+    $('#langCode').textContent = lang.toUpperCase();
+    $$('[data-lang-value]').forEach(function (b) {
+      b.setAttribute('aria-checked', String(b.getAttribute('data-lang-value') === lang));
+    });
+
+    updateThemeButton();
+    if (save) store.set(LANG_KEY, lang);
+  }
+
+  /* ======================================================
+     ТЕМЫ
+     ====================================================== */
+  var THEME_KEY = 'warden-theme';
+  var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  var themePref = root.getAttribute('data-theme-pref') || 'system';
+  var THEME_LABEL = { system: 'themeSystem', dark: 'themeDark', light: 'themeLight' };
+
+  function resolveTheme(pref) {
+    if (pref === 'system') return media && media.matches ? 'dark' : 'light';
+    return pref;
+  }
+
+  function updateThemeButton() {
+    $('#themeIcon').setAttribute('href', '#i-' + themePref);
+    $('#themeLabel').textContent = t(THEME_LABEL[themePref]);
+    $$('[data-theme-value]').forEach(function (b) {
+      b.setAttribute('aria-checked', String(b.getAttribute('data-theme-value') === themePref));
+    });
+  }
+
+  function applyTheme(pref, save) {
+    if (!THEME_LABEL[pref]) pref = 'system';
+    themePref = pref;
+    root.setAttribute('data-theme-pref', pref);
+    root.setAttribute('data-theme', resolveTheme(pref));
+    updateThemeButton();
+    if (save) store.set(THEME_KEY, pref);
+  }
+
+  if (media) {
+    var onSystemChange = function () { if (themePref === 'system') applyTheme('system', false); };
+    if (media.addEventListener) media.addEventListener('change', onSystemChange);
+    else if (media.addListener) media.addListener(onSystemChange);
+  }
+
+  /* ======================================================
+     ВЫПАДАЮЩИЕ МЕНЮ
+     ====================================================== */
+  var menus = [
+    { btn: $('#themeBtn'), menu: $('#themeMenu') },
+    { btn: $('#langBtn'), menu: $('#langMenu') }
+  ];
+
+  function closeMenus(except) {
+    menus.forEach(function (m) {
+      if (m === except) return;
+      m.menu.classList.remove('open');
+      m.btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  menus.forEach(function (m) {
+    m.btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var willOpen = !m.menu.classList.contains('open');
+      closeMenus(m);
+      m.menu.classList.toggle('open', willOpen);
+      m.btn.setAttribute('aria-expanded', String(willOpen));
+      if (willOpen) {
+        var active = $('[aria-checked="true"]', m.menu) || $('.menu-item', m.menu);
+        if (active) setTimeout(function () { active.focus(); }, 60);
+      }
+    });
+    m.menu.addEventListener('click', function (e) { e.stopPropagation(); });
+    m.menu.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      var items = $$('.menu-item', m.menu);
+      var i = items.indexOf(document.activeElement);
+      var next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+      items[next].focus();
+    });
+  });
+
+  $$('[data-theme-value]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      applyTheme(b.getAttribute('data-theme-value'), true);
+      closeMenus();
+      $('#themeBtn').focus();
+    });
+  });
+
+  $$('[data-lang-value]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      applyLang(b.getAttribute('data-lang-value'), true);
+      closeMenus();
+      $('#langBtn').focus();
+    });
+  });
+
+  document.addEventListener('click', function () { closeMenus(); });
+
+  /* ======================================================
+     UI-СОСТОЯНИЯ
+     ====================================================== */
+  var loadingState = $('#loadingState');
+  var authState = $('#authState');
+  var profileState = $('#profileState');
+  var authError = $('#authError');
+  var authErrorText = $('#authErrorText');
+
+  function showState(state) {
+    loadingState.hidden = state !== 'loading';
+    authState.hidden = state !== 'auth';
+    profileState.hidden = state !== 'profile';
+  }
+
+  function showError(msgKey) {
+    authErrorText.textContent = t(msgKey);
+    authError.hidden = false;
+  }
+
+  function clearError() {
+    authError.hidden = true;
+  }
+
+  /* ======================================================
+     ВКЛАДКИ
+     ====================================================== */
+  var tabSignIn = $('#tabSignIn');
+  var tabSignUp = $('#tabSignUp');
+  var panelSignIn = $('#panelSignIn');
+  var panelSignUp = $('#panelSignUp');
+
+  function setTab(which) {
+    var isSignIn = which === 'signin';
+    tabSignIn.setAttribute('aria-selected', String(isSignIn));
+    tabSignUp.setAttribute('aria-selected', String(!isSignIn));
+    panelSignIn.hidden = !isSignIn;
+    panelSignUp.hidden = isSignIn;
+    clearError();
+  }
+
+  tabSignIn.addEventListener('click', function () { setTab('signin'); });
+  tabSignUp.addEventListener('click', function () { setTab('signup'); });
+
+  /* ======================================================
+     OAuth
+     ====================================================== */
+  var REDIRECT_URL = 'https://github.io';
+
+  function setOAuthLoading(btn, loading) {
+    var spinner = $('.spinner', btn);
+    btn.disabled = loading;
+    if (spinner) spinner.hidden = !loading;
+  }
+
+  function oauth(provider, btn) {
+    if (!supabaseClient) { showError('errNoSupabase'); return; }
+    clearError();
+    setOAuthLoading(btn, true);
+    supabaseClient.auth.signInWithOAuth({
+      provider: provider,
+      options: { redirectTo: REDIRECT_URL }
+    }).then(function (res) {
+      setOAuthLoading(btn, false);
+      if (res.error) {
+        if (provider === 'yandex') {
+          showError('errYandex');
+        } else {
+          showError('errGeneric');
+        }
+      }
+    }).catch(function () {
+      setOAuthLoading(btn, false);
+      showError('errGeneric');
+    });
+  }
+
+  $('#googleBtn').addEventListener('click', function () { oauth('google', this); });
+  $('#yandexBtn').addEventListener('click', function () { oauth('yandex', this); });
+
+  /* ======================================================
+     EMAIL / ПАРОЛЬ
+     ====================================================== */
+  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function mapAuthError(err) {
+    var msg = (err && err.message) || '';
+    if (/already registered|already exists|duplicate/i.test(msg)) return 'errEmailTaken';
+    if (/invalid login credentials|invalid.*credentials/i.test(msg)) return 'errInvalidCreds';
+    if (/email not confirmed/i.test(msg)) return 'errEmailNotConfirmed';
+    return 'errGeneric';
+  }
+
+  $('#panelSignIn').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!supabaseClient) { showError('errNoSupabase'); return; }
+    clearError();
+
+    var email = $('#signinEmail').value.trim();
+    var pass = $('#signinPass').value;
+
+    if (!email || !pass) { showError('errFillAll'); return; }
+    if (!emailRe.test(email)) { showError('errInvalidEmail'); return; }
+
+    var btn = $('#signinSubmit');
+    btn.disabled = true;
+    supabaseClient.auth.signInWithPassword({ email: email, password: pass })
+      .then(function (res) {
+        btn.disabled = false;
+        if (res.error) showError(mapAuthError(res.error));
+        // при успехе сработает onAuthStateChange
+      })
+      .catch(function () { btn.disabled = false; showError('errGeneric'); });
+  });
+
+  $('#panelSignUp').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!supabaseClient) { showError('errNoSupabase'); return; }
+    clearError();
+
+    var nick = $('#signupNick').value.trim();
+    var email = $('#signupEmail').value.trim();
+    var pass = $('#signupPass').value;
+
+    if (!nick || !email || !pass) { showError('errFillAll'); return; }
+    if (!emailRe.test(email)) { showError('errInvalidEmail'); return; }
+    if (pass.length < 6) { showError('errShortPass'); return; }
+
+    var btn = $('#signupSubmit');
+    btn.disabled = true;
+    supabaseClient.auth.signUp({
+      email: email,
+      password: pass,
+      options: { data: { nickname: nick } }
+    }).then(function (res) {
+      btn.disabled = false;
+      if (res.error) showError(mapAuthError(res.error));
+      // при успехе сработает onAuthStateChange
+    }).catch(function () { btn.disabled = false; showError('errGeneric'); });
+  });
+
+  /* ======================================================
+     ПРОФИЛЬ
+     ====================================================== */
+  function renderProfile(user) {
+    var meta = (user.user_metadata && user.user_metadata.nickname) || '';
+    var name = meta || (user.email ? user.email.split('@')[0] : '');
+    var initial = (name.charAt(0) || 'W').toUpperCase();
+
+    var avatar = $('#profileAvatar');
+    avatar.innerHTML = '';
+    if (meta && user.user_metadata && user.user_metadata.avatar_url) {
+      var img = document.createElement('img');
+      img.src = user.user_metadata.avatar_url;
+      img.alt = '';
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = initial;
+    }
+
+    $('#profileGreeting').textContent = t('greeting') + ' ' + (name || '');
+    $('#profileEmail').textContent = user.email || '';
+  }
+
+  $('#signoutBtn').addEventListener('click', function () {
+    if (!supabaseClient) return;
+    supabaseClient.auth.signOut().catch(function () {});
+  });
+
+  /* ======================================================
+     СЛУШАТЕЛЬ СОСТОЯНИЯ АВТОРИЗАЦИИ
+     ====================================================== */
+  function init() {
+    if (!supabaseClient) {
+      showState('auth');
+      showError('errNoSupabase');
+      return;
+    }
+
+    // Восстанавливаем сессию и слушаем изменения
+    supabaseClient.auth.onAuthStateChange(function (event, session) {
+      if (session && session.user) {
+        renderProfile(session.user);
+        showState('profile');
+      } else {
+        showState('auth');
+      }
+    });
+
+    // Первичная проверка сессии
+    supabaseClient.auth.getSession().then(function (res) {
+      if (res.data && res.data.session && res.data.session.user) {
+        renderProfile(res.data.session.user);
+        showState('profile');
+      } else {
+        showState('auth');
+      }
+    }).catch(function () {
+      showState('auth');
+    });
+  }
+
+  /* ======================================================
+     ИНИЦИАЛИЗАЦИЯ
+     ====================================================== */
+  applyTheme(themePref, false);
+  applyLang(currentLang, false);
+  showState('loading');
+  init();
+})();
+</script>
+</body>
+</html>

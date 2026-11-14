@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark" data-theme-pref="system">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Warden Browser — приватный open-source браузер на C++20 и Qt6 WebEngine.">
+<title>Warden Browser — приватность на уровне ядра</title>
+
+<script>
+/* Ранняя установка темы (до отрисовки, чтобы не было «вспышки») + откат логотипа */
+(function () {
+  var root = document.documentElement, pref = 'system';
+  root.classList.add('js');
+  try { pref = localStorage.getItem('warden-theme') || 'system'; } catch (e) {}
+  if (['system', 'dark', 'light'].indexOf(pref) < 0) pref = 'system';
+  var dark = pref === 'system'
+    ? !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    : pref === 'dark';
+  root.setAttribute('data-theme', dark ? 'dark' : 'light');
+  root.setAttribute('data-theme-pref', pref);
+})();
+
+/* Цепочка откатов логотипа: PNG → запасные PNG → векторный SVG-щит */
+window.wardenLogoFallback = function (img) {
+  var list = (img.getAttribute('data-fallbacks') || '').split('|').filter(Boolean);
+  if (list.length) {
+    img.setAttribute('data-fallbacks', list.slice(1).join('|'));
+    img.src = list[0];
+  } else {
+    img.onerror = null;
+    img.hidden = true;
+    var svg = img.nextElementSibling;
+    if (svg) svg.removeAttribute('hidden');
+  }
+};
+</script>
+
+<style>
+/* ===================== ПЕРЕМЕННЫЕ ТЕМ ===================== */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --bg-2: #10161f;
+  --text: #e6edf3;
+  --text-muted: #9198a1;
+  --border: #2a2f37;
+  --card-bg: rgba(22, 27, 34, 0.62);
+  --card-bg-hover: rgba(28, 34, 43, 0.78);
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --card-shadow-hover: 0 18px 44px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 210, 255, 0.18);
+  --nav-bg: rgba(13, 17, 23, 0.72);
+  --menu-bg: rgba(22, 27, 34, 0.96);
+  --accent: #4a90e2;
+  --accent-2: #00d2ff;
+  --accent-text: #58b4ff;
+  --on-accent: #06121f;
+  --accent-soft: rgba(74, 144, 226, 0.14);
+  --accent-border: rgba(0, 210, 255, 0.32);
+  --btn-bg: rgba(255, 255, 255, 0.04);
+  --btn-bg-hover: rgba(255, 255, 255, 0.09);
+  --glow-1: rgba(74, 144, 226, 0.22);
+  --glow-2: rgba(0, 210, 255, 0.14);
+  --card-glow: rgba(0, 210, 255, 0.13);
+  --particle: 0, 210, 255;
+  --particle-line: 74, 144, 226;
+  --particle-alpha: 0.85;
+  --warn: #f0b429;
+  --warn-soft: rgba(240, 180, 41, 0.13);
+  --warn-border: rgba(240, 180, 41, 0.38);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fa;
+  --bg-2: #ffffff;
+  --text: #1f2328;
+  --text-muted: #59636e;
+  --border: #d0d7de;
+  --card-bg: rgba(255, 255, 255, 0.74);
+  --card-bg-hover: rgba(255, 255, 255, 0.94);
+  --card-shadow: 0 1px 2px rgba(31, 35, 40, 0.05), 0 8px 24px rgba(66, 74, 83, 0.09);
+  --card-shadow-hover: 0 2px 4px rgba(31, 35, 40, 0.06), 0 16px 40px rgba(9, 105, 218, 0.16);
+  --nav-bg: rgba(246, 248, 250, 0.78);
+  --menu-bg: rgba(255, 255, 255, 0.98);
+  --accent: #0969da;
+  --accent-2: #0a8fb8;
+  --accent-text: #0969da;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(9, 105, 218, 0.09);
+  --accent-border: rgba(9, 105, 218, 0.32);
+  --btn-bg: rgba(255, 255, 255, 0.8);
+  --btn-bg-hover: #ffffff;
+  --glow-1: rgba(9, 105, 218, 0.13);
+  --glow-2: rgba(10, 143, 184, 0.11);
+  --card-glow: rgba(9, 105, 218, 0.09);
+  --particle: 9, 105, 218;
+  --particle-line: 9, 105, 218;
+  --particle-alpha: 0.55;
+  --warn: #9a6700;
+  --warn-soft: rgba(154, 103, 0, 0.1);
+  --warn-border: rgba(154, 103, 0, 0.35);
+}
+
+/* ===================== БАЗА ===================== */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .35s ease, color .35s ease;
+  overflow-x: hidden;
+}
+body.announce-open { overflow: hidden; }
+
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 8px; }
+
+.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.icon { width: 18px; height: 18px; flex: none; }
+
+/* ===================== NAVBAR ===================== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  border-bottom: 1px solid var(--border);
+  transition: background-color .35s ease, border-color .35s ease;
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 1.06rem; letter-spacing: -0.01em; min-width: 0; }
+.brand:hover { text-decoration: none; }
+.brand-logo { width: 34px; height: 34px; flex: none; object-fit: contain; border-radius: 8px; filter: drop-shadow(0 2px 8px var(--glow-1)); }
+.brand-name { white-space: nowrap; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: .7rem; font-weight: 600; letter-spacing: .02em; white-space: nowrap;
+  color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-border);
+}
+
+.nav-actions { display: flex; align-items: center; gap: 8px; }
+
+.nav-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 38px; padding: 0 12px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--btn-bg); color: var(--text);
+  font-size: .88rem; font-weight: 500; white-space: nowrap;
+  transition: background-color .2s ease, border-color .2s ease, transform .2s ease;
+}
+.nav-btn:hover { background: var(--btn-bg-hover); border-color: var(--accent-border); text-decoration: none; }
+.nav-btn:active { transform: scale(.97); }
+.nav-btn .chev { width: 14px; height: 14px; opacity: .7; transition: transform .25s ease; }
+.nav-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.nav-signin {
+  color: var(--on-accent);
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  box-shadow: 0 4px 16px var(--glow-1);
+}
+.nav-signin:hover {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  box-shadow: 0 8px 24px var(--glow-1), 0 0 0 4px var(--accent-soft);
+}
+
+.flag { width: 22px; height: 15px; flex: none; border-radius: 3px; box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.35); overflow: hidden; display: block; }
+
+/* Выпадающие меню */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 190px;
+  padding: 6px; border-radius: 12px;
+  background: var(--menu-bg); border: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  opacity: 0; visibility: hidden; transform: translateY(-6px) scale(.98); transform-origin: top right;
+  transition: opacity .18s ease, transform .18s ease, visibility .18s;
+}
+.menu.open { opacity: 1; visibility: visible; transform: none; }
+.menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 8px; background: transparent;
+  font-size: .9rem; text-align: left; color: var(--text);
+  transition: background-color .15s ease;
+}
+.menu-item:hover { background: var(--accent-soft); }
+.menu-item .check { margin-left: auto; width: 16px; height: 16px; color: var(--accent-text); opacity: 0; }
+.menu-item[aria-checked="true"] { color: var(--accent-text); font-weight: 600; }
+.menu-item[aria-checked="true"] .check { opacity: 1; }
+.menu-item small { color: var(--text-muted); font-weight: 500; }
+
+/* ===================== HERO ===================== */
+.hero {
+  position: relative; isolation: isolate;
+  min-height: 100vh; min-height: 100svh;
+  display: flex; align-items: center;
+  padding: 120px 0 90px; overflow: hidden;
+}
+.hero::before, .hero::after {
+  content: ""; position: absolute; z-index: -2; border-radius: 50%; filter: blur(70px); pointer-events: none;
+}
+.hero::before { width: 620px; height: 620px; left: -160px; top: -140px; background: radial-gradient(circle, var(--glow-1), transparent 65%); }
+.hero::after { width: 560px; height: 560px; right: -140px; bottom: -160px; background: radial-gradient(circle, var(--glow-2), transparent 65%); }
+
+#particles { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.hero-fade { position: absolute; left: 0; right: 0; bottom: 0; height: 140px; z-index: -1; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--bg)); }
+
+.hero-content { text-align: center; max-width: 900px; margin: 0 auto; }
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 7px 16px; margin-bottom: 28px; border-radius: 999px;
+  font-size: .86rem; font-weight: 600; letter-spacing: .01em;
+  color: var(--accent-text); background: var(--card-bg); border: 1px solid var(--accent-border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: 0 0 28px var(--glow-2);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 0 var(--accent-2); animation: pulse 2.2s infinite; flex: none; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 210, 255, 0.55); }
+  70% { box-shadow: 0 0 0 9px rgba(0, 210, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 210, 255, 0); }
+}
+
+.hero-title {
+  margin: 0 0 24px;
+  font-size: clamp(2.2rem, 6.2vw, 4.5rem);
+  line-height: 1.08; font-weight: 800; letter-spacing: -0.035em;
+}
+.hero-title span { display: block; }
+.gradient-text {
+  background: linear-gradient(100deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent) 110%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: shine 7s linear infinite;
+}
+@keyframes shine { to { background-position: 200% center; } }
+
+.hero-desc { margin: 0 auto 36px; max-width: 700px; font-size: clamp(1rem, 1.6vw, 1.18rem); color: var(--text-muted); }
+
+.btn-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 50px; padding: 0 26px; border-radius: 13px;
+  border: 1px solid transparent; font-size: 1rem; font-weight: 600;
+  transition: transform .2s ease, box-shadow .25s ease, background-color .2s ease, border-color .2s ease;
+}
+.btn:hover { text-decoration: none; transform: translateY(-2px); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn-primary {
+  color: var(--on-accent);
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 26px var(--glow-1), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btn-primary:hover { box-shadow: 0 14px 36px var(--glow-1), 0 0 0 4px var(--accent-soft), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.btn-ghost {
+  color: var(--text); background: var(--card-bg); border-color: var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.btn-ghost:hover { border-color: var(--accent-border); background: var(--card-bg-hover); }
+.btn-lg { min-height: 58px; padding: 0 34px; font-size: 1.08rem; border-radius: 15px; }
+
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 44px; }
+.chip {
+  padding: 5px 12px; border-radius: 8px; font-size: .78rem; font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--text-muted); background: var(--btn-bg); border: 1px solid var(--border);
+}
+
+/* ===================== СЕКЦИИ ===================== */
+.section { padding: 90px 0; scroll-margin-top: 64px; }
+.section-head { text-align: center; max-width: 720px; margin: 0 auto 52px; }
+.eyebrow { display: inline-block; margin-bottom: 12px; font-size: .78rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-text); }
+.section-title { margin: 0 0 14px; font-size: clamp(1.8rem, 3.6vw, 2.6rem); line-height: 1.15; font-weight: 800; letter-spacing: -0.025em; }
+.section-sub { margin: 0; color: var(--text-muted); font-size: 1.05rem; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+
+.card {
+  position: relative; overflow: hidden;
+  padding: 28px; border-radius: 18px;
+  background: var(--card-bg); border: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: var(--card-shadow);
+  transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease, background-color .3s ease;
+}
+.card::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 0%), var(--card-glow), transparent 65%);
+  transition: opacity .3s ease;
+}
+.card:hover { transform: translateY(-5px); border-color: var(--accent-border); background: var(--card-bg-hover); box-shadow: var(--card-shadow-hover); }
+.card:hover::before { opacity: 1; }
+.card > * { position: relative; }
+
+.card-icon {
+  display: grid; place-items: center; width: 50px; height: 50px; margin-bottom: 20px;
+  border-radius: 13px; color: var(--accent-text);
+  background: linear-gradient(135deg, var(--accent-soft), transparent);
+  border: 1px solid var(--accent-border);
+  transition: transform .3s ease;
+}
+.card:hover .card-icon { transform: scale(1.07) rotate(-3deg); }
+.card-icon svg { width: 25px; height: 25px; }
+.card h3 { margin: 0 0 10px; font-size: 1.14rem; line-height: 1.3; font-weight: 700; letter-spacing: -0.01em; }
+.card p { margin: 0; color: var(--text-muted); font-size: .95rem; }
+
+/* Появление при прокрутке (только если работает JS) */
+.js .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); transition-delay: var(--d, 0ms); }
+.js .reveal.in { opacity: 1; transform: none; }
+
+/* ===================== БЛОК СКАЧИВАНИЯ ===================== */
+.download-box {
+  position: relative; overflow: hidden; text-align: center;
+  padding: 64px 28px; border-radius: 26px;
+  background: var(--card-bg); border: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: var(--card-shadow);
+}
+.download-box::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(520px circle at 15% 0%, var(--glow-1), transparent 60%),
+    radial-gradient(520px circle at 85% 100%, var(--glow-2), transparent 60%);
+}
+.download-box > * { position: relative; }
+.download-box p { max-width: 600px; margin: 0 auto 30px; color: var(--text-muted); font-size: 1.05rem; }
+.download-note { margin-top: 18px; font-size: .84rem; color: var(--text-muted); }
+
+/* ===================== FOOTER ===================== */
+.footer { padding: 34px 0 44px; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: .9rem; }
+.footer p { margin: 0 0 10px; }
+.footer a { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+
+/* ===================== ЭКРАН АНОНСА ===================== */
+#home { transition: opacity .45s ease, transform .45s ease, filter .45s ease; }
+body.announce-open #home { opacity: 0; transform: scale(.985); filter: blur(6px); pointer-events: none; }
+
+.announce {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 96px 20px 40px; overflow-y: auto;
+  background:
+    radial-gradient(700px circle at 20% 15%, var(--glow-1), transparent 60%),
+    radial-gradient(700px circle at 80% 90%, var(--glow-2), transparent 60%),
+    var(--bg);
+  opacity: 0; visibility: hidden; transform: translateY(26px);
+  transition: opacity .45s ease, transform .45s cubic-bezier(.2, .7, .2, 1), visibility .45s;
+}
+body.announce-open .announce { opacity: 1; visibility: visible; transform: none; }
+
+.announce-card {
+  width: 100%; max-width: 660px; margin: auto; text-align: center;
+  padding: 48px 36px; border-radius: 26px;
+  background: var(--card-bg); border: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: var(--card-shadow);
+}
+.announce-logo { width: 84px; height: 84px; margin: 0 auto 22px; display: block; object-fit: contain; filter: drop-shadow(0 8px 26px var(--glow-1)); animation: float 5s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-8px); } }
+
+.badge-dev {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; margin-bottom: 20px; border-radius: 999px;
+  font-size: .84rem; font-weight: 700;
+  color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-border);
+}
+.announce-card h2 { margin: 0 0 14px; font-size: clamp(1.6rem, 4vw, 2.3rem); line-height: 1.18; font-weight: 800; letter-spacing: -0.025em; }
+.announce-card p { margin: 0 auto 32px; max-width: 520px; color: var(--text-muted); font-size: 1.05rem; }
+.announce-card code {
+  padding: 2px 8px; border-radius: 6px; font-size: .9em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-border);
+  white-space: nowrap;
+}
+
+/* ===================== АДАПТИВ ===================== */
+@media (max-width: 980px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) {
+  .brand .badge, .nav-btn .label { display: none; }
+  .nav-btn { padding: 0 10px; }
+  .section { padding: 68px 0; }
+}
+@media (max-width: 620px) {
+  .container { padding: 0 18px; }
+  .grid { grid-template-columns: 1fr; }
+  .hero { padding: 104px 0 70px; }
+  .btn { width: 100%; }
+  .download-box { padding: 46px 20px; }
+  .announce-card { padding: 36px 22px; }
+}
+@media (max-width: 400px) {
+  .brand-name { font-size: .95rem; }
+  .nav-actions { gap: 6px; }
+  .nav-btn { padding: 0 8px; gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ===================== SVG-СПРАЙТ ===================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="wardenGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4a90e2"/>
+      <stop offset="1" stop-color="#00d2ff"/>
+    </linearGradient>
+
+    <!-- Запасной логотип: щит с буквой W -->
+    <symbol id="logo-shield" viewBox="0 0 64 64">
+      <path d="M32 3 56 12v18c0 15.5-9.8 26.4-24 31C17.800 56.400 8 45.500 8 30V12Z" fill="url(#wardenGrad)"/>
+      <path d="M32 3 56 12v18c0 15.500-9.800 26.400-24 31Z" fill="#ffffff" opacity=".12"/>
+      <path d="M19 22l6.500 21L32 29l6.500 14L45 22" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-github" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 .5C5.650.500.500 5.650.500 12c0 5.080 3.290 9.390 7.860 10.910.570.110.780-.250.780-.550 0-.270-.010-1.170-.020-2.120-3.200.700-3.880-1.360-3.880-1.360-.520-1.330-1.280-1.680-1.280-1.680-1.040-.710.080-.700.080-.700 1.150.080 1.760 1.190 1.760 1.190 1.030 1.760 2.690 1.250 3.350.960.100-.740.400-1.250.730-1.540-2.550-.290-5.240-1.280-5.240-5.690 0-1.260.450-2.280 1.180-3.090-.120-.290-.510-1.460.110-3.040 0 0 .970-.310 3.160 1.180a10.900 10.900 0 0 1 5.760 0c2.190-1.490 3.150-1.180 3.150-1.180.630 1.580.230 2.750.120 3.040.740.810 1.180 1.830 1.180 3.090 0 4.420-2.690 5.390-5.260 5.680.410.360.780 1.060.780 2.140 0 1.540-.010 2.790-.010 3.170 0 .310.210.670.790.550A11.510 11.510 0 0 0 23.500 12C23.500 5.650 18.350.500 12 .500Z"/>
+    </symbol>
+
+    <symbol id="i-system" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>
+    </symbol>
+    <symbol id="i-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.500 14.500A8.500 8.500 0 1 1 9.500 3.500a7 7 0 0 0 11 11Z"/>
+    </symbol>
+    <symbol id="i-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.900 4.900l1.400 1.400M17.700 17.700l1.400 1.400M2 12h2M20 12h2M4.900 19.100l1.400-1.400M17.700 6.300l1.400-1.400"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m6 9 6 6 6-6"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.600" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12.500 4.500 4.500L19 7.500"/>
+    </symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="4"/>
+      <path d="M4 20c0-3.300 3.600-5 8-5s8 1.700 8 5"/>
+    </symbol>
+
+    <!-- Флаги -->
+    <symbol id="flag-ru" viewBox="0 0 60 40">
+      <rect width="60" height="40" fill="#ffffff"/>
+      <rect y="13.330" width="60" height="13.340" fill="#0039a6"/>
+      <rect y="26.670" width="60" height="13.330" fill="#d52b1e"/>
+    </symbol>
+    <symbol id="flag-en" viewBox="0 0 60 40">
+      <rect width="60" height="40" fill="#012169"/>
+      <path d="M0 0 60 40M60 0 0 40" stroke="#ffffff" stroke-width="8"/>
+      <path d="M0 0 60 40M60 0 0 40" stroke="#c8102e" stroke-width="3"/>
+      <path d="M30 0v40M0 20h60" stroke="#ffffff" stroke-width="13"/>
+      <path d="M30 0v40M0 20h60" stroke="#c8102e" stroke-width="7"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ===================== NAVBAR ===================== -->
+<header class="navbar">
+  <div class="container nav-inner">
+    <a class="brand" href="#top" id="brandLink" data-i18n-aria="ariaHome">
+      <img class="brand-logo" alt=""
+           src="resources/warden-browser-logo.png"
+           data-fallbacks="https://raw.githubusercontent.com/vakarman-dev/warden-browser/main/resources/warden-browser-logo.png|resources/warden.png"
+           onerror="wardenLogoFallback(this)">
+      <svg class="brand-logo" hidden aria-hidden="true"><use href="#logo-shield"/></svg>
+      <span class="brand-name">Warden Browser</span>
+      <span class="badge">Open Source</span>
+    </a>
+
+    <nav class="nav-actions" data-i18n-aria="ariaNav">
+      <!-- 1) GitHub -->
+      <a class="nav-btn" href="https://github.com" target="_blank" rel="noopener noreferrer" data-i18n-aria="ariaGithub">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+        <span class="label">GitHub</span>
+      </a>
+
+      <!-- 2) Тема -->
+      <div class="menu-wrap">
+        <button class="nav-btn" id="themeBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="themeMenu" data-i18n-aria="ariaTheme">
+          <svg class="icon" aria-hidden="true"><use id="themeIcon" href="#i-system"/></svg>
+          <span class="label" id="themeLabel">Системная</span>
+          <svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        </button>
+        <div class="menu" id="themeMenu" role="menu">
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="true" data-theme-value="system">
+            <svg class="icon" aria-hidden="true"><use href="#i-system"/></svg>
+            <span data-i18n="themeSystem">Системная</span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-theme-value="dark">
+            <svg class="icon" aria-hidden="true"><use href="#i-dark"/></svg>
+            <span data-i18n="themeDark">Тёмная</span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-theme-value="light">
+            <svg class="icon" aria-hidden="true"><use href="#i-light"/></svg>
+            <span data-i18n="themeLight">Светлая</span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Вход -->
+      <a class="nav-btn nav-signin" href="https://github.io" data-i18n-aria="ariaSignIn">
+        <svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>
+        <span class="label" data-i18n="signIn">Войти</span>
+      </a>
+
+      <!-- 3) Язык -->
+      <div class="menu-wrap">
+        <button class="nav-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langMenu" data-i18n-aria="ariaLang">
+          <svg class="flag" aria-hidden="true"><use id="langFlag" href="#flag-ru"/></svg>
+          <span id="langCode">RU</span>
+          <svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>
+        </button>
+        <div class="menu" id="langMenu" role="menu">
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="true" data-lang-value="ru" lang="ru">
+            <svg class="flag" aria-hidden="true"><use href="#flag-ru"/></svg>
+            <span>Русский <small>(RU)</small></span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+          <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-lang-value="en" lang="en">
+            <svg class="flag" aria-hidden="true"><use href="#flag-en"/></svg>
+            <span>English <small>(EN)</small></span>
+            <svg class="check" aria-hidden="true"><use href="#i-check"/></svg>
+          </button>
+        </div>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<!-- ===================== ГЛАВНЫЙ ЭКРАН ===================== -->
+<div id="home">
+  <main id="top">
+
+    <!-- HERO -->
+    <section class="hero" id="hero">
+      <canvas id="particles" aria-hidden="true"></canvas>
+      <div class="hero-fade"></div>
+      <div class="container">
+        <div class="hero-content">
+          <div class="hero-badge reveal">
+            <span class="dot"></span>
+            <span data-i18n="heroBadge">Приватность. Контроль. Свобода.</span>
+          </div>
+          <h1 class="hero-title reveal" style="--d:80ms">
+            <span data-i18n="heroTitle1">Приватность на уровне ядра.</span>
+            <span class="gradient-text" data-i18n="heroTitle2">Скорость C++20.</span>
+          </h1>
+          <p class="hero-desc reveal" style="--d:160ms" data-i18n="heroDesc">
+            Warden Browser — кроссплатформенный open-source браузер на Qt6 WebEngine. Блокировка трекеров, Tor и шифрование встроены в ядро, а не добавлены расширениями.
+          </p>
+          <div class="btn-row reveal" style="--d:240ms">
+            <button class="btn btn-primary" type="button" id="exploreBtn" data-i18n="heroExplore">Изучить возможности ↓</button>
+            <a class="btn btn-ghost" href="https://github.com" target="_blank" rel="noopener noreferrer">
+              <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+              <span data-i18n="heroGithub">Открыть GitHub ↗</span>
+            </a>
+          </div>
+          <div class="chips reveal" style="--d:320ms" aria-hidden="true">
+            <span class="chip">C++20</span>
+            <span class="chip">Qt6 WebEngine</span>
+            <span class="chip">AES-256-GCM</span>
+            <span class="chip">Tor / SOCKS5</span>
+            <span class="chip">E2EE</span>
+            <span class="chip">Open Source</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ВОЗМОЖНОСТИ -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="eyebrow" data-i18n="featEyebrow">Что внутри</span>
+          <h2 class="section-title" data-i18n="featTitle">Ключевые возможности</h2>
+          <p class="section-sub" data-i18n="featSub">Всё, что нужно для приватного и быстрого веба, — из коробки.</p>
+        </div>
+
+        <div class="grid">
+          <article class="card reveal">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2.500 20 5.500v6c0 5-3.300 8.600-8 10-4.700-1.400-8-5-8-10v-6Z"/><path d="m8.500 8.500 7 7"/><circle cx="12" cy="12" r="5"/>
+              </svg>
+            </div>
+            <h3 data-i18n="f1t">Блокировка трекеров и рекламы</h3>
+            <p data-i18n="f1d">Фильтрация работает на уровне C++ ядра: запросы к трекерам и рекламным сетям отсекаются ещё до загрузки страницы.</p>
+          </article>
+
+          <article class="card reveal" style="--d:80ms">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2.500c.5 3.500 5.500 6 5.500 11.500a5.500 5.500 0 0 1-11 0c0-2 .8-3.300 1.800-4.500.4 1.500 1.200 2.300 2.200 2.500-.500-3.500.500-7 1.500-9.500Z"/><path d="M12 21.500a2.500 2.500 0 0 0 2.500-2.500c0-1.500-1.500-2.300-2.500-4-1 1.700-2.500 2.500-2.500 4a2.500 2.500 0 0 0 2.500 2.500Z"/>
+              </svg>
+            </div>
+            <h3 data-i18n="f2t">Tor / SOCKS5 и «Сжечь сессию»</h3>
+            <p data-i18n="f2d">Встроенный Tor и SOCKS5-прокси без сторонних расширений, а быстрый сценарий «Сжечь сессию» стирает следы одним действием.</p>
+          </article>
+
+          <article class="card reveal" style="--d:160ms">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4.500" y="10.500" width="15" height="10.500" rx="2.500"/><path d="M8 10.500V7.500a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1.300"/><path d="M12 16.300v2"/>
+              </svg>
+            </div>
+            <h3 data-i18n="f3t">Шифрование AES-256-GCM и E2EE</h3>
+            <p data-i18n="f3d">Аккаунты шифруются алгоритмом AES-256-GCM, а сквозное шифрование (E2EE) гарантирует, что ключи есть только у вас.</p>
+          </article>
+
+          <article class="card reveal">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="3"/><path d="M14.500 4v16"/><path d="m8.700 9 .9 2.100 2.100.9-2.100.9-.9 2.100-.9-2.100-2.100-.9 2.100-.9Z"/><path d="M17 9h1.500M17 12h1.500"/>
+              </svg>
+            </div>
+            <h3 data-i18n="f4t">Боковая панель нейросетей</h3>
+            <p data-i18n="f4d">Бесплатные ChatGPT, DuckDuckGo AI и HuggingChat в одной панели — с автопереключением на другой сервис при достижении лимита.</p>
+          </article>
+
+          <article class="card reveal" style="--d:80ms">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4.500" width="18" height="15" rx="3"/><circle cx="8.500" cy="10" r="1.700"/><path d="m3.500 17 5-4.500 3.500 3 3.500-3.500 5 5"/>
+              </svg>
+            </div>
+            <h3 data-i18n="f5t">Кастомная новая вкладка</h3>
+            <p data-i18n="f5d">Живые обои, собственные фотографии или сплошной цвет — стартовая страница выглядит так, как хотите вы.</p>
+          </article>
+
+          <article class="card reveal" style="--d:160ms">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m8 7.500-4.500 4.500L8 16.500M16 7.500l4.500 4.500-4.500 4.500M13.500 5l-3 14"/>
+              </svg>
+            </div>
+            <h3 data-i18n="f6t">100% Open Source</h3>
+            <p data-i18n="f6d">Открытый исходный код на C++20 и Qt6, прозрачная разработка: каждую строчку можно проверить, собрать и улучшить.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- СКАЧИВАНИЕ -->
+    <section class="section" id="download">
+      <div class="container">
+        <div class="download-box reveal">
+          <span class="eyebrow" data-i18n="dlEyebrow">Скачать</span>
+          <h2 class="section-title" data-i18n="dlTitle">Готовы вернуть контроль над своим вебом?</h2>
+          <p data-i18n="dlDesc">Warden Browser бесплатен и открыт. Никакой телеметрии, никаких скрытых условий.</p>
+          <button class="btn btn-primary btn-lg" type="button" id="downloadBtn" data-i18n="dlBtn">Скачать Warden Browser ↓</button>
+          <div class="download-note" data-i18n="dlNote">Первая версия v0.1 — уже скоро</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <p data-i18n="footerText">© Warden Browser · Создатель: Alexey · Создано с фокусом на свободу и приватность</p>
+      <a href="https://github.com/vakarman-dev/warden-browser/tree/main" target="_blank" rel="noopener noreferrer">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+        <span data-i18n="footerRepo">Репозиторий на GitHub ↗</span>
+      </a>
+    </div>
+  </footer>
+</div>
+
+<!-- ===================== ЭКРАН АНОНСА v0.1 ===================== -->
+<section class="announce" id="announce" role="dialog" aria-modal="true" aria-labelledby="announceTitle" aria-hidden="true">
+  <div class="announce-card">
+    <img class="announce-logo" alt=""
+         src="resources/warden-browser-logo.png"
+         data-fallbacks="https://raw.githubusercontent.com/vakarman-dev/warden-browser/main/resources/warden-browser-logo.png|resources/warden.png"
+         onerror="wardenLogoFallback(this)">
+    <svg class="announce-logo" hidden aria-hidden="true"><use href="#logo-shield"/></svg>
+
+    <div><span class="badge-dev">🚧 <span data-i18n="annBadge">В разработке</span></span></div>
+    <h2 id="announceTitle" data-i18n="annTitle">Первая версия (v0.1) выйдет уже скоро!</h2>
+    <p data-i18n-html="annText">Пока идёт разработка, вы можете посмотреть интерактивный прототип <code>v0.0-prototype-test</code> на GitHub.</p>
+
+    <div class="btn-row">
+      <a class="btn btn-primary" id="releasesBtn" href="https://github.com/vakarman-dev/warden-browser/releases" target="_blank" rel="noopener noreferrer">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+        <span data-i18n="annReleases">Открыть GitHub Releases ↗</span>
+      </a>
+      <button class="btn btn-ghost" type="button" id="backBtn" data-i18n="annBack">← Вернуться на главную</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  var root = document.documentElement;
+  var $ = function (sel, ctx) { return (ctx || document).querySelector(sel); };
+  var $$ = function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  /* ======================================================
+     ПЕРЕВОДЫ — единый объект
+     ====================================================== */
+  var I18N = {
+    ru: {
+      docTitle: 'Warden Browser — приватность на уровне ядра',
+      ariaHome: 'Warden Browser — на главную',
+      ariaNav: 'Основная навигация',
+      ariaGithub: 'Открыть GitHub',
+      ariaTheme: 'Тема оформления',
+      ariaLang: 'Язык сайта',
+      ariaSignIn: 'Войти в Warden ID',
+      signIn: 'Войти',
+      themeSystem: 'Системная',
+      themeDark: 'Тёмная',
+      themeLight: 'Светлая',
+      heroBadge: 'Приватность. Контроль. Свобода.',
+      heroTitle1: 'Приватность на уровне ядра.',
+      heroTitle2: 'Скорость C++20.',
+      heroDesc: 'Warden Browser — кроссплатформенный open-source браузер на Qt6 WebEngine. Блокировка трекеров, Tor и шифрование встроены в ядро, а не добавлены расширениями.',
+      heroExplore: 'Изучить возможности ↓',
+      heroGithub: 'Открыть GitHub ↗',
+      featEyebrow: 'Что внутри',
+      featTitle: 'Ключевые возможности',
+      featSub: 'Всё, что нужно для приватного и быстрого веба, — из коробки.',
+      f1t: 'Блокировка трекеров и рекламы',
+      f1d: 'Фильтрация работает на уровне C++ ядра: запросы к трекерам и рекламным сетям отсекаются ещё до загрузки страницы.',
+      f2t: 'Tor / SOCKS5 и «Сжечь сессию»',
+      f2d: 'Встроенный Tor и SOCKS5-прокси без сторонних расширений, а быстрый сценарий «Сжечь сессию» стирает следы одним действием.',
+      f3t: 'Шифрование AES-256-GCM и E2EE',
+      f3d: 'Аккаунты шифруются алгоритмом AES-256-GCM, а сквозное шифрование (E2EE) гарантирует, что ключи есть только у вас.',
+      f4t: 'Боковая панель нейросетей',
+      f4d: 'Бесплатные ChatGPT, DuckDuckGo AI и HuggingChat в одной панели — с автопереключением на другой сервис при достижении лимита.',
+      f5t: 'Кастомная новая вкладка',
+      f5d: 'Живые обои, собственные фотографии или сплошной цвет — стартовая страница выглядит так, как хотите вы.',
+      f6t: '100% Open Source',
+      f6d: 'Открытый исходный код на C++20 и Qt6, прозрачная разработка: каждую строчку можно проверить, собрать и улучшить.',
+      dlEyebrow: 'Скачать',
+      dlTitle: 'Готовы вернуть контроль над своим вебом?',
+      dlDesc: 'Warden Browser бесплатен и открыт. Никакой телеметрии, никаких скрытых условий.',
+      dlBtn: 'Скачать Warden Browser ↓',
+      dlNote: 'Первая версия v0.1 — уже скоро',
+      annBadge: 'В разработке',
+      annTitle: 'Первая версия (v0.1) выйдет уже скоро!',
+      annText: 'Пока идёт разработка, вы можете посмотреть интерактивный прототип <code>v0.0-prototype-test</code> на GitHub.',
+      annReleases: 'Открыть GitHub Releases ↗',
+      annBack: '← Вернуться на главную',
+      footerText: '© Warden Browser · Создатель: Alexey · Создано с фокусом на свободу и приватность',
+      footerRepo: 'Репозиторий на GitHub ↗'
+    },
+    en: {
+      docTitle: 'Warden Browser — privacy at the core',
+      ariaHome: 'Warden Browser — home',
+      ariaNav: 'Main navigation',
+      ariaGithub: 'Open GitHub',
+      ariaTheme: 'Color theme',
+      ariaLang: 'Site language',
+      ariaSignIn: 'Sign in to Warden ID',
+      signIn: 'Sign In',
+      themeSystem: 'System',
+      themeDark: 'Dark',
+      themeLight: 'Light',
+      heroBadge: 'Privacy. Control. Freedom.',
+      heroTitle1: 'Privacy at the core level.',
+      heroTitle2: 'The speed of C++20.',
+      heroDesc: 'Warden Browser is a cross-platform open-source browser built on Qt6 WebEngine. Tracker blocking, Tor and encryption are built into the core — not bolted on with extensions.',
+      heroExplore: 'Explore features ↓',
+      heroGithub: 'Open GitHub ↗',
+      featEyebrow: 'What’s inside',
+      featTitle: 'Key features',
+      featSub: 'Everything you need for a private, fast web — out of the box.',
+      f1t: 'Tracker & ad blocking',
+      f1d: 'Filtering runs inside the C++ core: requests to trackers and ad networks are cut off before the page even loads.',
+      f2t: 'Tor / SOCKS5 & “Burn Session”',
+      f2d: 'Built-in Tor and SOCKS5 proxy with no third-party extensions, plus a quick “Burn Session” scenario that wipes your traces in one action.',
+      f3t: 'AES-256-GCM & E2EE encryption',
+      f3d: 'Accounts are encrypted with AES-256-GCM, and end-to-end encryption (E2EE) ensures that only you hold the keys.',
+      f4t: 'AI sidebar',
+      f4d: 'Free ChatGPT, DuckDuckGo AI and HuggingChat in a single panel — with automatic switching to another service when a limit is reached.',
+      f5t: 'Custom new tab',
+      f5d: 'Live wallpapers, your own photos or a solid color — your start page looks exactly the way you want.',
+      f6t: '100% Open Source',
+      f6d: 'Open source code in C++20 and Qt6 with transparent development: every line can be audited, built and improved.',
+      dlEyebrow: 'Download',
+      dlTitle: 'Ready to take back control of your web?',
+      dlDesc: 'Warden Browser is free and open. No telemetry, no hidden terms.',
+      dlBtn: 'Download Warden Browser ↓',
+      dlNote: 'First release v0.1 — coming soon',
+      annBadge: 'In development',
+      annTitle: 'The first version (v0.1) is coming soon!',
+      annText: 'While development is in progress, you can check out the interactive prototype <code>v0.0-prototype-test</code> on GitHub.',
+      annReleases: 'Open GitHub Releases ↗',
+      annBack: '← Back to home',
+      footerText: '© Warden Browser · Creator: Alexey · Built with a focus on freedom and privacy',
+      footerRepo: 'Repository on GitHub ↗'
+    }
+  };
+
+  var LANG_KEY = 'warden-lang';
+  var currentLang = store.get(LANG_KEY);
+  if (!I18N[currentLang]) currentLang = 'ru';
+
+  function t(key) {
+    var dict = I18N[currentLang] || I18N.ru;
+    return dict[key] != null ? dict[key] : (I18N.ru[key] != null ? I18N.ru[key] : key);
+  }
+
+  function applyLang(lang, save) {
+    if (!I18N[lang]) lang = 'ru';
+    currentLang = lang;
+    root.lang = lang;
+    document.title = t('docTitle');
+
+    $$('[data-i18n]').forEach(function (el) { el.textContent = t(el.getAttribute('data-i18n')); });
+    $$('[data-i18n-html]').forEach(function (el) { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
+    $$('[data-i18n-aria]').forEach(function (el) { el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'))); });
+
+    $('#langFlag').setAttribute('href', '#flag-' + lang);
+    $('#langCode').textContent = lang.toUpperCase();
+    $$('[data-lang-value]').forEach(function (b) {
+      b.setAttribute('aria-checked', String(b.getAttribute('data-lang-value') === lang));
+    });
+
+    updateThemeButton();
+    if (save) store.set(LANG_KEY, lang);
+  }
+
+  /* ======================================================
+     ТЕМЫ: system / dark / light
+     ====================================================== */
+  var THEME_KEY = 'warden-theme';
+  var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  var themePref = root.getAttribute('data-theme-pref') || 'system';
+  var THEME_LABEL = { system: 'themeSystem', dark: 'themeDark', light: 'themeLight' };
+
+  function resolveTheme(pref) {
+    if (pref === 'system') return media && media.matches ? 'dark' : 'light';
+    return pref;
+  }
+
+  function updateThemeButton() {
+    $('#themeIcon').setAttribute('href', '#i-' + themePref);
+    $('#themeLabel').textContent = t(THEME_LABEL[themePref]);
+    $$('[data-theme-value]').forEach(function (b) {
+      b.setAttribute('aria-checked', String(b.getAttribute('data-theme-value') === themePref));
+    });
+  }
+
+  function applyTheme(pref, save) {
+    if (!THEME_LABEL[pref]) pref = 'system';
+    themePref = pref;
+    root.setAttribute('data-theme-pref', pref);
+    root.setAttribute('data-theme', resolveTheme(pref));
+    updateThemeButton();
+    if (save) store.set(THEME_KEY, pref);
+    particles.refreshColors();
+  }
+
+  // Мгновенная реакция на смену темы в системе (если выбрана «Системная»)
+  if (media) {
+    var onSystemChange = function () { if (themePref === 'system') applyTheme('system', false); };
+    if (media.addEventListener) media.addEventListener('change', onSystemChange);
+    else if (media.addListener) media.addListener(onSystemChange);
+  }
+
+  /* ======================================================
+     ВЫПАДАЮЩИЕ МЕНЮ
+     ====================================================== */
+  var menus = [
+    { btn: $('#themeBtn'), menu: $('#themeMenu') },
+    { btn: $('#langBtn'), menu: $('#langMenu') }
+  ];
+
+  function closeMenus(except) {
+    menus.forEach(function (m) {
+      if (m === except) return;
+      m.menu.classList.remove('open');
+      m.btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  menus.forEach(function (m) {
+    m.btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var willOpen = !m.menu.classList.contains('open');
+      closeMenus(m);
+      m.menu.classList.toggle('open', willOpen);
+      m.btn.setAttribute('aria-expanded', String(willOpen));
+      if (willOpen) {
+        var active = $('[aria-checked="true"]', m.menu) || $('.menu-item', m.menu);
+        if (active) setTimeout(function () { active.focus(); }, 60);
+      }
+    });
+
+    m.menu.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    // Навигация стрелками внутри меню
+    m.menu.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      var items = $$('.menu-item', m.menu);
+      var i = items.indexOf(document.activeElement);
+      var next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+      items[next].focus();
+    });
+  });
+
+  $$('[data-theme-value]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      applyTheme(b.getAttribute('data-theme-value'), true);
+      closeMenus();
+      $('#themeBtn').focus();
+    });
+  });
+
+  $$('[data-lang-value]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      applyLang(b.getAttribute('data-lang-value'), true);
+      closeMenus();
+      $('#langBtn').focus();
+    });
+  });
+
+  document.addEventListener('click', function () { closeMenus(); });
+
+  /* ======================================================
+     ЭКРАН АНОНСА v0.1
+     ====================================================== */
+  var home = $('#home');
+  var announce = $('#announce');
+  var downloadBtn = $('#downloadBtn');
+  var announceOpen = false;
+
+  function openAnnounce() {
+    if (announceOpen) return;
+    announceOpen = true;
+    closeMenus();
+    document.body.classList.add('announce-open');
+    announce.setAttribute('aria-hidden', 'false');
+    home.setAttribute('aria-hidden', 'true');
+    home.inert = true;
+    particles.sync();
+    setTimeout(function () { $('#releasesBtn').focus({ preventScroll: true }); }, 120);
+  }
+
+  function closeAnnounce() {
+    if (!announceOpen) return;
+    announceOpen = false;
+    document.body.classList.remove('announce-open');
+    announce.setAttribute('aria-hidden', 'true');
+    home.removeAttribute('aria-hidden');
+    home.inert = false;
+    particles.sync();
+    downloadBtn.focus({ preventScroll: true });
+  }
+
+  downloadBtn.addEventListener('click', openAnnounce);
+  $('#backBtn').addEventListener('click', closeAnnounce);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var anyMenuOpen = menus.some(function (m) { return m.menu.classList.contains('open'); });
+    if (anyMenuOpen) closeMenus();
+    else closeAnnounce();
+  });
+
+  /* ======================================================
+     ПЛАВНАЯ ПРОКРУТКА
+     ====================================================== */
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var scrollMode = reduceMotion ? 'auto' : 'smooth';
+
+  $('#exploreBtn').addEventListener('click', function () {
+    $('#features').scrollIntoView({ behavior: scrollMode, block: 'start' });
+  });
+
+  $('#brandLink').addEventListener('click', function (e) {
+    e.preventDefault();
+    closeAnnounce();
+    window.scrollTo({ top: 0, behavior: scrollMode });
+  });
+
+  /* ======================================================
+     ПОЯВЛЕНИЕ БЛОКОВ + ПОДСВЕТКА КАРТОЧЕК
+     ====================================================== */
+  var revealEls = $$('.reveal');
+  if ('IntersectionObserver' in window) {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          en.target.classList.add('in');
+          revealObserver.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    revealEls.forEach(function (el) { revealObserver.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  $$('.card').forEach(function (card) {
+    card.addEventListener('pointermove', function (e) {
+      var r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      card.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+
+  /* ======================================================
+     ЧАСТИЦЫ / «НЕЙРОННАЯ СЕТЬ» НА CANVAS
+     ====================================================== */
+  var particles = (function () {
+    var canvas = $('#particles');
+    var hero = $('#hero');
+    var ctx = canvas.getContext ? canvas.getContext('2d') : null;
+    var noop = function () {};
+    if (!ctx) return { refreshColors: noop, sync: noop };
+
+    var LINK_DIST = 135;
+    var MOUSE_DIST = 190;
+    var w = 0, h = 0, dpr = 1;
+    var pts = [];
+    var mouse = { x: 0, y: 0, active: false };
+    var colors = { dot: '0, 210, 255', line: '74, 144, 226', alpha: 0.8 };
+    var rafId = null;
+    var heroVisible = true;
+
+    function refreshColors() {
+      var cs = getComputedStyle(root);
+      colors.dot = cs.getPropertyValue('--particle').trim() || colors.dot;
+      colors.line = cs.getPropertyValue('--particle-line').trim() || colors.line;
+      colors.alpha = parseFloat(cs.getPropertyValue('--particle-alpha')) || 0.8;
+      if (!rafId) draw();
+    }
+
+    function makePoint() {
+      var speed = 0.12 + Math.random() * 0.28;
+      var angle = Math.random() * Math.PI * 2;
+      var vx = Math.cos(angle) * speed, vy = Math.sin(angle) * speed;
+      return { x: Math.random() * w, y: Math.random() * h, vx: vx, vy: vy, bx: vx, by: vy, r: 1.1 + Math.random() * 1.7 };
+    }
+
+    function resize() {
+      var rect = hero.getBoundingClientRect();
+      w = Math.max(1, rect.width);
+      h = Math.max(1, rect.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      var target = Math.max(26, Math.min(110, Math.round((w * h) / 13000)));
+      while (pts.length < target) pts.push(makePoint());
+      pts.length = target;
+      pts.forEach(function (p) {
+        if (p.x > w) p.x = Math.random() * w;
+        if (p.y > h) p.y = Math.random() * h;
+      });
+      if (!rafId) draw();
+    }
+
+    function update() {
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i];
+
+        // Мягкое отталкивание от курсора
+        if (mouse.active) {
+          var dx = p.x - mouse.x, dy = p.y - mouse.y;
+          var d = Math.sqrt(dx * dx + dy * dy);
+          if (d < MOUSE_DIST && d > 0.01) {
+            var force = (1 - d / MOUSE_DIST) * 0.06;
+            p.vx += (dx / d) * force;
+            p.vy += (dy / d) * force;
+          }
+        }
+
+        // Плавный возврат к базовой скорости
+        p.vx += (p.bx - p.vx) * 0.02;
+        p.vy += (p.by - p.vy) * 0.02;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); p.bx = Math.abs(p.bx); }
+        else if (p.x > w) { p.x = w; p.vx = -Math.abs(p.vx); p.bx = -Math.abs(p.bx); }
+        if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); p.by = Math.abs(p.by); }
+        else if (p.y > h) { p.y = h; p.vy = -Math.abs(p.vy); p.by = -Math.abs(p.by); }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      var i, j, p, q, dx, dy, d, a;
+
+      // Связи между частицами
+      ctx.lineWidth = 1;
+      for (i = 0; i < pts.length; i++) {
+        p = pts[i];
+        for (j = i + 1; j < pts.length; j++) {
+          q = pts[j];
+          dx = p.x - q.x; dy = p.y - q.y;
+          if (dx > LINK_DIST || dx < -LINK_DIST || dy > LINK_DIST || dy < -LINK_DIST) continue;
+          d = Math.sqrt(dx * dx + dy * dy);
+          if (d < LINK_DIST) {
+            a = (1 - d / LINK_DIST) * 0.42 * colors.alpha;
+            ctx.strokeStyle = 'rgba(' + colors.line + ',' + a.toFixed(3) + ')';
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+          }
+        }
+      }
+
+      // Связи с курсором
+      if (mouse.active) {
+        for (i = 0; i < pts.length; i++) {
+          p = pts[i];
+          dx = p.x - mouse.x; dy = p.y - mouse.y;
+          d = Math.sqrt(dx * dx + dy * dy);
+          if (d < MOUSE_DIST) {
+            a = (1 - d / MOUSE_DIST) * 0.7 * colors.alpha;
+            ctx.strokeStyle = 'rgba(' + colors.dot + ',' + a.toFixed(3) + ')';
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
+          }
+        }
+      }
+
+      // Сами частицы
+      ctx.fillStyle = 'rgba(' + colors.dot + ',' + colors.alpha + ')';
+      for (i = 0; i < pts.length; i++) {
+        p = pts[i];
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    function frame() {
+      update();
+      draw();
+      rafId = requestAnimationFrame(frame);
+    }
+
+    // Анимация работает только когда она действительно видна
+    function sync() {
+      var shouldRun = heroVisible && !document.hidden && !announceOpen && !reduceMotion;
+      if (shouldRun && !rafId) rafId = requestAnimationFrame(frame);
+      else if (!shouldRun && rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    }
+
+    window.addEventListener('pointermove', function (e) {
+      if (e.pointerType === 'touch') return;
+      var rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+      mouse.active = mouse.x >= 0 && mouse.x <= rect.width && mouse.y >= 0 && mouse.y <= rect.height;
+    }, { passive: true });
+    document.addEventListener('pointerleave', function () { mouse.active = false; });
+    window.addEventListener('blur', function () { mouse.active = false; });
+
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resize, 120);
+    });
+    document.addEventListener('visibilitychange', sync);
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        heroVisible = entries[0].isIntersecting;
+        sync();
+      }, { threshold: 0 }).observe(hero);
+    }
+
+    refreshColors();
+    resize();
+    sync();
+
+    return { refreshColors: refreshColors, sync: sync };
+  })();
+
+  /* ======================================================
+     ИНИЦИАЛИЗАЦИЯ
+     ====================================================== */
+  applyTheme(themePref, false);
+  applyLang(currentLang, false);
+})();
+</script>
+</body>
+</html>
