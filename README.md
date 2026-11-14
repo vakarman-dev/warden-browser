@@ -1,36 +1,46 @@
-# warden-browser
-Privacy-first C++ desktop browser with zero-knowledge encrypted accounts, tracker &amp; ad interception, live wallpapers, and auto-switching AI assistant.
-
 <div align="center">
-  <img src="resources/warden-browser-logo.png" alt="Warden Browser Logo" width="400" height="400">
-  <h1>Warden Browser</h1>
-  <p><strong>A fast, privacy-hardened, cross-platform desktop web browser built with modern C++20 and Qt6 WebEngine.</strong></p>
+
+<img src="resources/warden-browser-logo.png" alt="Warden Browser Logo" width="400" height="400" />
+
+# Warden Browser
+
+**Privacy-Hardened, Cross-Platform Desktop Web Browser built on C++20 & Qt6 WebEngine**
+
+[![Website](https://shields.io)](https://github.io)
+![Commit Activity](https://shields.io)
+![Repo Size](https://shields.io)
+![Stars](https://shields.io)
+![Contributors](https://shields.io)
+![License](https://shields.io)
+![Latest Release](https://shields.io)
+
 </div>
+
+---
+
+## 🛡️ About Warden Browser
+
+**Warden Browser** is an open-source, privacy-first desktop web browser built with **C++20** and **Qt6 WebEngine**. It features native C++ tracker blocking, Tor routing support, zero-knowledge encrypted local profiles, an AI sidebar, and a clean interface without hidden telemetry.
 
 ### ✨ Key Features
 
-* **🔒 Core-Level Privacy (C++ Interceptor):** A native network request interceptor blocks trackers and ads before they load, enforces HTTPS-Only mode (`http://` to `https://`), strips cross-origin `Referer` headers, and prevents WebRTC IP leaks.
-* **🌐 Tor / SOCKS5 Support & "Burn Session":** One-click routing through a local Tor proxy (`127.0.0.1:9050`) and instant destruction of cookies, cache, and active tabs via a single hotkey.
-* **☁️ End-to-End Encrypted (E2EE) Accounts:** Isolated local SQLite profiles with optional cross-device cloud sync powered by client-side **AES-256-GCM** encryption.
-* **🤖 Auto-Switching AI Sidebar:** Built-in side panel with free AI assistants (ChatGPT, DuckDuckGo AI Chat, HuggingChat) that automatically switches to the next available model when message limits are reached.
-* **🎨 Customizable New Tab Page:** Minimalist start page with search engine selection (DuckDuckGo, Google, Yandex) and custom backgrounds (live wallpapers, custom local images, or solid colors).
-* **📦 Cross-Platform Packaging:** Native installers for **Windows** (`.exe`), **Linux** (`.deb`, `.pkg.tar.zst`, `.rpm`), and **macOS** (`.dmg`).
+* **Core-Level C++ Protection (`PrivacyEngine`):** Blocks ads and trackers natively, enforces HTTPS-Only mode, strips cross-site `Referer` headers, and prevents WebRTC IP leaks.
+* **Tor / SOCKS5 & Burn Session:** Route traffic through Tor or use the **Burn Session** button to instantly clear cookies, cache, history, and tabs.
+* **E2EE Encrypted Accounts:** Client-side **AES-256-GCM** encryption (`PBKDF2`) for local SQLite profiles before optional cloud sync.
+* **Auto-Switching AI Sidebar:** Integrated side panel with free AI assistants (ChatGPT, DuckDuckGo AI, HuggingChat) and automatic fallback.
+* **Customizable New Tab:** Supports custom search engines (DuckDuckGo, Google, Yandex) and interactive particle or wallpaper backgrounds.
+* **100% Open Source:** Modern C++20 and Qt6 codebase for Windows, Linux, and macOS.
 
 ---
 
-### 🚀 Installation & Building
+## 🚀 Status & Roadmap
 
-Pre-built installers for Windows and Linux are available on the **[Releases](../../releases)** page.
-
-#### Build from Source (CMake + Qt6)
-```bash
-git clone https://github.com
-cd warden-browser
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-```
+* **Stage 1 (`v0.0-prototype-test`):** Interactive prototype, website, and cloud database setup.
+*  **Stage 2 (`v0.1-test` — In Progress):** Native C++20 & Qt6 WebEngine builds via GitHub Actions.
+* **Stage 3 (`v1.0`):** First stable release with full packaging and extended customization.
 
 ---
 
-### 🔐 Cloud Sync Configuration
-By default, all user accounts operate completely offline in local mode. To enable cross-device cloud synchronization, add your `supabase_url` and `supabase_anon_key` to `cloud_config.json` (the database schema is provided in `supabase_setup.sql`).
+## 📄 License
+
+Licensed under the terms of the [LICENSE](LICENSE) file in this repository.
