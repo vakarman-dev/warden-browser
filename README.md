@@ -8,14 +8,9 @@
 
 <p>
   <a href="https://github.io">
-    <img src="https://shields.io" alt="Website" />
+    <img src="https://vakarman-dev.github.io/warden-browser/" alt="Website" />
   </a>
-  <img src="https://shields.io" alt="Commit Activity" />
-  <img src="https://shields.io" alt="Repo Size" />
-  <img src="https://shields.io" alt="Stars" />
-  <img src="https://shields.io" alt="Contributors" />
-  <img src="https://shields.io" alt="License" />
-  <img src="https://shields.io" alt="Latest Release" />
+  <img src="https://github.com/vakarman-dev/warden-browser/releases" alt="Latest Release" />
 </p>
 
 </div>
