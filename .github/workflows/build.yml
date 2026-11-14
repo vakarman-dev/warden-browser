@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-windows:
-    name: Windows (Qt ${{ env.QT_VERSION }})
+    name: Windows (Qt 6.8.0)
     runs-on: windows-latest
 
     steps:
@@ -67,7 +67,9 @@ jobs:
           $env:Path = "C:\Program Files\OpenSSL-Win64\bin;$env:Path"
           windeployqt --release --no-translations $exe.FullName
 
-          Copy-Item -Recurse -Force "resources" "build\Release\resources"
+          if (Test-Path "resources") {
+            Copy-Item -Recurse -Force "resources" "build\Release\resources"
+          }
           if (Test-Path "cloud_config.json") {
             Copy-Item -Force "cloud_config.json" "build\Release\cloud_config.json"
           }
@@ -80,7 +82,7 @@ jobs:
           if-no-files-found: error
 
   build-linux:
-    name: Linux (Qt ${{ env.QT_VERSION }})
+    name: Linux (Qt 6.8.0)
     runs-on: ubuntu-latest
 
     steps:
@@ -123,7 +125,6 @@ jobs:
             libsm6 \
             libice6
 
-          # Ubuntu 24.04 -> libasound2t64; older releases -> libasound2
           sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2 || true
 
       - name: Install Qt
