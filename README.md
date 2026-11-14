@@ -1,18 +1,22 @@
 <div align="center">
 
-<img src="resources/warden-browser-logo.png" alt="Warden Browser Logo" width="400" height="400" />
+<img src="resources/warden-browser-logo.png" alt="Warden Browser Logo" width="500" height="500" />
 
 # Warden Browser
 
 **Privacy-Hardened, Cross-Platform Desktop Web Browser built on C++20 & Qt6 WebEngine**
 
-[![Website](https://shields.io)](https://github.io)
-![Commit Activity](https://shields.io)
-![Repo Size](https://shields.io)
-![Stars](https://shields.io)
-![Contributors](https://shields.io)
-![License](https://shields.io)
-![Latest Release](https://shields.io)
+<p>
+  <a href="https://github.io">
+    <img src="https://shields.io" alt="Website" />
+  </a>
+  <img src="https://shields.io" alt="Commit Activity" />
+  <img src="https://shields.io" alt="Repo Size" />
+  <img src="https://shields.io" alt="Stars" />
+  <img src="https://shields.io" alt="Contributors" />
+  <img src="https://shields.io" alt="License" />
+  <img src="https://shields.io" alt="Latest Release" />
+</p>
 
 </div>
 
@@ -35,9 +39,9 @@
 
 ## 🚀 Status & Roadmap
 
-* **Stage 1 (`v0.0-prototype-test`):** Interactive prototype, website, and cloud database setup.
+*  **Stage 1 (`v0.0-prototype-test`):** Interactive prototype, website, and cloud database setup.
 *  **Stage 2 (`v0.1-test` — In Progress):** Native C++20 & Qt6 WebEngine builds via GitHub Actions.
-* **Stage 3 (`v1.0`):** First stable release with full packaging and extended customization.
+*  **Stage 3 (`v1.0`):** First stable release with full packaging and extended customization.
 
 ---
 
