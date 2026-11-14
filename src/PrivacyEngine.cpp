@@ -143,7 +143,7 @@ void PrivacyEngine::attachToProfile(QWebEngineProfile* profile)
 
     // Подключаем перехватчик запросов.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-    profile->setRequestInterceptor(m_interceptor);
+    profile->setUrlRequestInterceptor(m_interceptor);
 #else
     profile->setUrlRequestInterceptor(m_interceptor);
 #endif
@@ -152,8 +152,7 @@ void PrivacyEngine::attachToProfile(QWebEngineProfile* profile)
 
     // Отключаем утечку реального IP через WebRTC: разрешаем только
     // проксируемый UDP, без прямых (не проксируемых) соединений.
-    settings->setAttribute(QWebEngineSettings::WebRTCIPHandlingPolicy,
-                           QWebEngineSettings::DisableNonProxiedUdp);
+    settings->setAttribute(QWebEngineSettings::WebRTCPublicInterfacesOnly, true);
 
     // Запрещаем постоянные (persistent) куки — сессия живёт только в памяти.
     profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
