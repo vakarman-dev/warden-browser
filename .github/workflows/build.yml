@@ -62,14 +62,16 @@ jobs:
       - name: Build project (Windows)
         run: cmake --build build --config Release --parallel
 
-      - name: Deploy Qt and copy resources (Windows)
+           - name: Deploy Qt and copy resources (Windows)
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Path "build\Release" -Filter *.exe | Where-Object { $_.Name -notmatch 'qml|WebEngine' } | Select-Object -First 1
           if (-not $exe) { Write-Error "No executable found in build\Release" }
           windeployqt --release --no-translations $exe.FullName
+          Get-ChildItem -Path "$env:OPENSSL_ROOT_DIR" -Filter "*.dll" -Recurse | Copy-Item -Destination "build\Release\" -Force
           if (Test-Path "resources") { Copy-Item -Recurse -Force "resources" "build\Release\resources" }
           if (Test-Path "cloud_config.json") { Copy-Item -Force "cloud_config.json" "build\Release\cloud_config.json" }
+
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
